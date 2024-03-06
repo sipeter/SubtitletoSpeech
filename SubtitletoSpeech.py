@@ -48,7 +48,7 @@ def text_to_speech(text, index, output_dir, subtitle_base_name, chaName, charact
 
 #创建第二个 text_to_speech 函数来处理 txt 文件转换为音频的需求
 def text_to_speech_txt(text, output_dir, text_base_name, chaName, characterEmotion="default", textLanguage="多语种混合",
-                   topK=40, topP=0.9, temperature=0.7,stream="True",save_temp="True"):
+                   topK=40, topP=0.9, temperature=0.7,stream="False",save_temp="False"):
     # 构造请求体，使用函数参数
     body = {
         "text": text,

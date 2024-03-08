@@ -4,9 +4,14 @@ import re
 import os
 from pydub import AudioSegment  # 用于处理音频文件
 import pyaudio  # 用于播放音频
+from datetime import datetime
 
 # 语音合成
 TTS_API_URL = "http://192.168.50.63:5000/tts"
+
+global p,streamAudio
+p = pyaudio.PyAudio()
+streamAudio = None
 
 # 定义 default_text
 default_text = (
@@ -89,71 +94,63 @@ def text_to_speech_txt(text, output_dir, text_base_name, chaName, characterEmoti
         print(f"Error: Failed to generate speech for text with status code: {response.status_code}")
         return None
 
-# 文本转语音函数
-def text_to_speech_stream(text, character_name="默认角色", stream=True):
+# 流式音频处理函数
+def play_audio_stream(text, output_dir, text_base_name, chaName, characterEmotion="default", textLanguage="多语种混合",
+                   topK=40, topP=0.9, temperature=0.7,stream="False",save_temp="False"):
+    # 构造请求体，使用函数参数
     body = {
         "text": text,
-        "cha_name": character_name,
-        "stream": stream
+        "cha_name": chaName,
+        "text_language": textLanguage,
+        "top_k": topK,
+        "top_p": topP,
+        "temperature": temperature,
+        "character_emotion": characterEmotion,
+        "stream": stream,
+        "save_temp": save_temp
     }
 
     # 发送POST请求
     response = requests.post(TTS_API_URL, json=body, stream=True)
-    return response
+    # 检查请求是否成功
 
-# 流式播放音频
-# 全局变量
-global stream
-stream = None
-def play_audio_stream(response,output_path):
-    global  stream
-    # 初始化pyaudio
-    p = pyaudio.PyAudio()
-
+    global p, streamAudio
     # 打开音频流
-    stream = p.open(format=p.get_format_from_width(2),
-                    channels=1,
-                    rate=32000,
-                    output=True)
+    streamAudio = p.open(format=p.get_format_from_width(2),
+                         channels=1,
+                         rate=32000,
+                         output=True)
+    # 是不是重复了？
+    # response = requests.post(TTS_API_URL, json=body, stream=True)
+    if response.status_code == 200:
 
-    with open(output_path, "wb") as audio_file:
-            try:
-                for data in response.iter_content(chunk_size=1024):
-                    audio_file.write(data) # 将音频数据写入文件
-                    if (stream is not None) and (not stream.is_stopped()):
-                        stream.write(data)
-
-            finally:
-                # 停止和关闭流
-                if stream is not None:
-                    stream.stop_stream()
-                return gr.Audio(output_path, type="filepath", streaming=True)
+        save_path = os.path.join(output_dir, f"{chaName}_{text_base_name}_{datetime.now().strftime('%Y%m%d%H%M%S%f')}.wav")
 
 
-# 处理流式音频请求
-def handle_stream_request(text, character_name):
-    output_dir = "AUDIO_FILES/InputText"
-    os.makedirs(output_dir, exist_ok=True)
-    # 根据请求生成一个音频文件名
-    output_file_name = f"{character_name}_audio_stream.wav"
-    output_path = os.path.join(output_dir, output_file_name)
+        # 检查保存路径是否存在
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+        with open(save_path, "wb") as f:
+            # 读取数据块并播放
+            for data in response.iter_content(chunk_size=1024):
+                f.write(data)
+                if (streamAudio is not None) and (not streamAudio.is_stopped()):
+                    streamAudio.write(data)
 
-    response = text_to_speech_stream(text, character_name, stream="True")
-    audio_path = play_audio_stream(response, output_path)
+        # 停止和关闭流
+        if streamAudio is not None:
+            streamAudio.stop_stream()
+        return gr.Audio(save_path, type="filepath")
+    else:
+        gr.Warning(f"请求失败，状态码：{response.status_code}, 返回内容：{response.content}")
+        return gr.Audio(None, type="filepath")
 
-    # 返回音频文件的路径，以便Gradio界面可以提供下载链接
-    return audio_path
-
-# 停止流式播放
-def stop_stream():
-    global stream
-    if stream is not None:
-        stream.stop_stream()
-        stream = None  # 重置流变量，允许后续播放
-
-
-
-
+    # 处理响应
+def stopAudioPlay():
+    global streamAudio
+    if streamAudio is not None:
+        streamAudio.stop_stream()
+        streamAudio = None
 
 
 
@@ -173,24 +170,8 @@ def generate_speech(subtitle_text, character_name, subtitle_base_name, index, ou
     return audio_path
 
 
-# 在之前的代码中定义 default_text
-default_text = (
-    "那年五月至第二年的年初，我住在一条狭长山谷入口附近的山顶上。夏天，山谷深处雨一阵阵下个不停，"
-    "而山谷外面大体是白云蓝天——那是海上有西南风吹来的缘故。风带来的湿乎乎的云进入山谷，"
-    "顺着山坡往上爬时就让雨降了下来。房子正好建在其分界线那里，所以时不时出现这一情形："
-    "房子正面一片明朗，而后院却大雨如注。起初觉得相当不可思议，但不久习惯之后，反倒以为理所当然。"
-    "周围山上低垂着时断时续的云。每当有风吹来，那样的云絮便像从前世入此间的魂灵一样为寻觅失去的记忆而在山间飘忽不定。"
-    "看上去宛如细雪的白亮亮的雨，有时也悄无声息地随风起舞。差不多总有风吹来，没有空调也能大体快意地度过夏天。"
-)
 
-# 在 Gradio 界面中增加文本输入功能
-with gr.Row():
-    gr.Markdown("---")
-    gr.Markdown("## Text to Speech")
-    input_text = gr.Textbox(value=default_text, label="输入文本", interactive=True, lines=8)
-    character_name_input = gr.Textbox(label="Character Name (Input Text)", placeholder="Enter character name here...")
-    submit_button_input_text = gr.Button("Convert Input Text to Speech", variant="primary")
-    audio_output_input_text = gr.Audio(None, label="Audio Output (Input Text)", type="filepath", streaming=True)
+
 
 
 # 定义处理函数
@@ -210,6 +191,25 @@ def main_input_text(input_text, character_name):
         print("由于错误，输入文本转换为语音失败。")
 
     return audio_path
+
+# 流式音频播放的事件处理函数
+def handle_stream_request(input_text, character_name):
+    if not character_name:
+        character_name = "胡桃(测试)"
+
+    # 假设使用当前目录作为输出目录
+    output_dir = "AUDIO_FILES"
+    os.makedirs(output_dir, exist_ok=True)
+
+    # 调用 play_audio_stream 函数处理音频流
+    audio_stream = play_audio_stream(input_text, output_dir, "input_text", chaName=character_name, stream="True")
+    if audio_stream:
+        print(f"输入文本已转换为语音并保存到 '{audio_stream}'。")
+    else:
+        print("由于错误，输入文本转换为语音失败。")
+
+    return audio_stream
+
 
 def main_subtitle(subtitle_file, character_name):
     # 如果 character_name 为空，则设置默认值为 "胡桃(测试)"
@@ -290,7 +290,7 @@ with gr.Blocks() as app:
                 sendStreamRequest = gr.Button("发送并开始播放", variant="primary", interactive=True)
                 stopStreamButton = gr.Button("停止播放", variant="secondary")
             with gr.Row():
-                audioStreamRecieve = gr.Audio(None, label="音频输出", interactive=False)
+                audioStreamRecieve = gr.Audio(None, label="音频输出", interactive=False,streaming=True)
 
     # 为"发送请求"按钮绑定事件处理函数，这里假设有对应的函数实现
     sendRequest.click(fn=main_input_text, inputs=[input_text, character_name_input], outputs=audioRecieve)
@@ -300,7 +300,7 @@ with gr.Blocks() as app:
                             outputs=audioStreamRecieve)
 
     # 为"停止播放"按钮绑定事件处理函数，这里假设有对应的函数实现
-    stopStreamButton.click(fn=stop_stream, inputs=[], outputs=[])
+    stopStreamButton.click(fn=stopAudioPlay, inputs=[], outputs=[])
 
     with gr.Row():
         gr.Markdown("---")

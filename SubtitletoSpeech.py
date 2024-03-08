@@ -7,6 +7,16 @@ from pydub import AudioSegment  # 用于处理音频文件
 # 语音合成
 TTS_API_URL = "http://192.168.50.63:5000/tts"
 
+# 定义 default_text
+default_text = (
+    "那年五月至第二年的年初，我住在一条狭长山谷入口附近的山顶上。夏天，山谷深处雨一阵阵下个不停，"
+    "而山谷外面大体是白云蓝天——那是海上有西南风吹来的缘故。风带来的湿乎乎的云进入山谷，"
+    "顺着山坡往上爬时就让雨降了下来。房子正好建在其分界线那里，所以时不时出现这一情形："
+    "房子正面一片明朗，而后院却大雨如注。起初觉得相当不可思议，但不久习惯之后，反倒以为理所当然。"
+    "周围山上低垂着时断时续的云。每当有风吹来，那样的云絮便像从前世入此间的魂灵一样为寻觅失去的记忆而在山间飘忽不定。"
+    "看上去宛如细雪的白亮亮的雨，有时也悄无声息地随风起舞。差不多总有风吹来，没有空调也能大体快意地度过夏天。"
+)
+
 def safe_filename(text, max_length=50):
     # 移除或替换文件名中不允许的字符
     safe_text = re.sub(r'[\\/*?:"<>|]', "", text)
@@ -95,6 +105,43 @@ def generate_speech(subtitle_text, character_name, subtitle_base_name, index, ou
     return audio_path
 
 
+# 在之前的代码中定义 default_text
+default_text = (
+    "那年五月至第二年的年初，我住在一条狭长山谷入口附近的山顶上。夏天，山谷深处雨一阵阵下个不停，"
+    "而山谷外面大体是白云蓝天——那是海上有西南风吹来的缘故。风带来的湿乎乎的云进入山谷，"
+    "顺着山坡往上爬时就让雨降了下来。房子正好建在其分界线那里，所以时不时出现这一情形："
+    "房子正面一片明朗，而后院却大雨如注。起初觉得相当不可思议，但不久习惯之后，反倒以为理所当然。"
+    "周围山上低垂着时断时续的云。每当有风吹来，那样的云絮便像从前世入此间的魂灵一样为寻觅失去的记忆而在山间飘忽不定。"
+    "看上去宛如细雪的白亮亮的雨，有时也悄无声息地随风起舞。差不多总有风吹来，没有空调也能大体快意地度过夏天。"
+)
+
+# 在 Gradio 界面中增加文本输入功能
+with gr.Row():
+    gr.Markdown("---")
+    gr.Markdown("## Text to Speech")
+    input_text = gr.Textbox(value=default_text, label="输入文本", interactive=True, lines=8)
+    character_name_input = gr.Textbox(label="Character Name (Input Text)", placeholder="Enter character name here...")
+    submit_button_input_text = gr.Button("Convert Input Text to Speech", variant="primary")
+    audio_output_input_text = gr.Audio(None, label="Audio Output (Input Text)", type="filepath", streaming=True)
+
+
+# 定义处理函数
+def main_input_text(input_text, character_name):
+    if not character_name:
+        character_name = "胡桃(测试)"
+
+    # 假设使用当前目录作为输出目录
+    output_dir = "AUDIO_FILES/InputText"
+    os.makedirs(output_dir, exist_ok=True)
+
+    # 调用 text_to_speech_txt 函数，将输入文本转换为音频
+    audio_path = text_to_speech_txt(input_text, output_dir, "input_text", chaName=character_name)
+    if audio_path:
+        print(f"输入文本已转换为语音并保存到 '{audio_path}'。")
+    else:
+        print("由于错误，输入文本转换为语音失败。")
+
+    return audio_path
 
 def main_subtitle(subtitle_file, character_name):
     # 如果 character_name 为空，则设置默认值为 "胡桃(测试)"
@@ -151,8 +198,32 @@ def main_text(text_file_path, character_name):
 
 with gr.Blocks() as app:
     # 使用 Markdown 组件来设置标题和描述，实现之前想通过构造函数设置的效果
-    gr.Markdown("# Subtitle and Text to Speech")
+    gr.Markdown("<h1 style='font-size: 24px;'>Subtitle and Text to Speech</h1>")
     gr.Markdown("Convert subtitles and text content to speech and merge into a single audio file.")
+    with gr.Row():
+        gr.Markdown("---")
+    with gr.Row():
+        gr.Markdown("<h2 style='font-size: 18px;'>输入文字转语音</h2>")
+
+
+
+    # 通过输入的文本内容来生成语音
+    with gr.Row():
+
+        input_text = gr.Textbox(value=default_text, label="输入文本", interactive=True, lines=8)
+        character_name_input = gr.Textbox(label="Character Name (Input Text)",
+                                          placeholder="Enter character name here...")
+    with gr.Row():
+        submit_button_input_text = gr.Button("Convert Input Text to Speech", variant="primary")
+        audio_output_input_text = gr.Audio(None, label="Audio Output (Input Text)", type="filepath", streaming=True)
+
+    submit_button_input_text.click(fn=main_input_text, inputs=[input_text, character_name_input],
+                                       outputs=audio_output_input_text)
+
+    with gr.Row():
+        gr.Markdown("---")
+    with gr.Row():
+        gr.Markdown("<h2 style='font-size: 18px;'>上传字幕转语音</h2>")
 
     with gr.Row():
         subtitle_file = gr.File(label="Upload your subtitle file")
@@ -165,6 +236,8 @@ with gr.Blocks() as app:
 
     with gr.Row():
         gr.Markdown("---")
+    with gr.Row():
+        gr.Markdown("<h2 style='font-size: 18px;'>上传文本文件转语音</h2>")
 
     with gr.Row():
         text_file_path = gr.File(label="Upload your text file")

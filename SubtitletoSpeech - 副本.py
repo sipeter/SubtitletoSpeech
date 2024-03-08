@@ -3,7 +3,6 @@ import requests
 import re
 import os
 from pydub import AudioSegment  # 用于处理音频文件
-import pyaudio  # 用于播放音频
 
 # 语音合成
 TTS_API_URL = "http://192.168.50.63:5000/tts"
@@ -25,6 +24,51 @@ def safe_filename(text, max_length=50):
     if len(safe_text) > max_length:
         safe_text = safe_text[:max_length - 3] + "..."
     return safe_text
+
+# 文本转语音函数
+def text_to_speech_stream(text, character_name="默认角色", stream=True):
+    body = {
+        "text": text,
+        "cha_name": character_name,
+        "stream": stream
+    }
+
+    # 发送POST请求
+    response = requests.post(TTS_API_URL, json=body, stream=True)
+    return response
+
+# 流式播放音频
+def play_audio_stream(response):
+    # 初始化pyaudio
+    p = pyaudio.PyAudio()
+
+    # 打开音频流
+    stream = p.open(format=p.get_format_from_width(2),
+                    channels=1,
+                    rate=32000,
+                    output=True)
+
+    # 读取数据块并播放
+    try:
+        for data in response.iter_content(chunk_size=1024):
+            stream.write(data)
+    finally:
+        # 停止和关闭流
+        stream.stop_stream()
+        stream.close()
+
+        # 终止pyaudio
+        p.terminate()
+
+# 处理流式音频请求
+def handle_stream_request(text, character_name):
+    response = text_to_speech_stream(text, character_name, stream="True")
+    play_audio_stream(response)
+
+# 停止流式播放
+def stop_stream():
+    # 这里需要实现一个停止播放的机制，例如通过设置一个全局变量来控制播放循环。由于直接停止线程可能会导致问题，建议使用更安全的停止机制。
+    pass
 
 def text_to_speech(text, index, output_dir, subtitle_base_name, chaName, characterEmotion="default",
                    textLanguage="多语种混合", topK=40, topP=0.9, temperature=0.7,stream="False",save_temp="False"):
@@ -88,56 +132,6 @@ def text_to_speech_txt(text, output_dir, text_base_name, chaName, characterEmoti
     else:
         print(f"Error: Failed to generate speech for text with status code: {response.status_code}")
         return None
-
-# 文本转语音函数
-def text_to_speech_stream(text, character_name="默认角色", stream=True):
-    body = {
-        "text": text,
-        "cha_name": character_name,
-        "stream": stream
-    }
-
-    # 发送POST请求
-    response = requests.post(TTS_API_URL, json=body, stream=True)
-    return response
-
-# 流式播放音频
-def play_audio_stream(response):
-    # 初始化pyaudio
-    p = pyaudio.PyAudio()
-
-    # 打开音频流
-    stream = p.open(format=p.get_format_from_width(2),
-                    channels=1,
-                    rate=32000,
-                    output=True)
-
-    # 读取数据块并播放
-    try:
-        for data in response.iter_content(chunk_size=1024):
-            stream.write(data)
-    finally:
-        # 停止和关闭流
-        stream.stop_stream()
-        stream.close()
-
-        # 终止pyaudio
-        p.terminate()
-
-# 处理流式音频请求
-def handle_stream_request(text, character_name):
-    response = text_to_speech_stream(text, character_name, stream="True")
-    play_audio_stream(response)
-
-# 停止流式播放
-def stop_stream():
-    # 这里需要实现一个停止播放的机制，例如通过设置一个全局变量来控制播放循环。由于直接停止线程可能会导致问题，建议使用更安全的停止机制。
-    pass
-
-
-
-
-
 
 
 def extract_chinese_subtitles(ass_file_path):
@@ -256,34 +250,20 @@ with gr.Blocks() as app:
     with gr.Row():
         gr.Markdown("<h2 style='font-size: 18px;'>输入文字转语音</h2>")
 
-        # 输入文本和角色选择
+
+
+    # 通过输入的文本内容来生成语音
     with gr.Row():
+
         input_text = gr.Textbox(value=default_text, label="输入文本", interactive=True, lines=8)
-        character_name_input = gr.Textbox(label="Character Name", placeholder="Enter character name here...")
+        character_name_input = gr.Textbox(label="Character Name (Input Text)",
+                                          placeholder="Enter character name here...")
+    with gr.Row():
+        submit_button_input_text = gr.Button("Convert Input Text to Speech", variant="primary")
+        audio_output_input_text = gr.Audio(None, label="Audio Output (Input Text)", type="filepath", streaming=True)
 
-    # Tabs for 完整音频和流式音频
-    with gr.Tabs():
-        with gr.Tab(label="请求完整音频"):
-            with gr.Row():
-                sendRequest = gr.Button("发送请求", variant="primary")
-                audioRecieve = gr.Audio(None, label="音频输出", type="filepath", streaming=False)
-
-        with gr.Tab(label="流式音频"):
-            with gr.Row():
-                sendStreamRequest = gr.Button("发送并开始播放", variant="primary", interactive=True)
-                stopStreamButton = gr.Button("停止播放", variant="secondary")
-            with gr.Row():
-                audioStreamRecieve = gr.Audio(None, label="音频输出", interactive=False)
-
-    # 为"发送请求"按钮绑定事件处理函数，这里假设有对应的函数实现
-    sendRequest.click(fn=main_input_text, inputs=[input_text, character_name_input], outputs=audioRecieve)
-
-    # 为"发送并开始播放"按钮绑定事件处理函数，这里假设有对应的函数实现
-    sendStreamRequest.click(fn=handle_stream_request, inputs=[input_text, character_name_input],
-                            outputs=audioStreamRecieve)
-
-    # 为"停止播放"按钮绑定事件处理函数，这里假设有对应的函数实现
-    stopStreamButton.click(fn=stop_stream, inputs=[], outputs=[])
+    submit_button_input_text.click(fn=main_input_text, inputs=[input_text, character_name_input],
+                                       outputs=audio_output_input_text)
 
     with gr.Row():
         gr.Markdown("---")

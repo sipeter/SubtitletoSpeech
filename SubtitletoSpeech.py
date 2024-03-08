@@ -102,7 +102,10 @@ def text_to_speech_stream(text, character_name="默认角色", stream=True):
     return response
 
 # 流式播放音频
-def play_audio_stream(response):
+is_playing = True
+def play_audio_stream(response,output_path):
+    global  is_playing
+    is_playing = True
     # 初始化pyaudio
     p = pyaudio.PyAudio()
 
@@ -112,27 +115,41 @@ def play_audio_stream(response):
                     rate=32000,
                     output=True)
 
-    # 读取数据块并播放
-    try:
-        for data in response.iter_content(chunk_size=1024):
-            stream.write(data)
-    finally:
-        # 停止和关闭流
-        stream.stop_stream()
-        stream.close()
+    with open(output_path, "wb") as audio_file:
+            try:
+                for data in response.iter_content(chunk_size=1024):
+                    if not is_playing:
+                        break
+                    stream.write(data)
+                    audio_file.write(data)
+            finally:
+                # 停止和关闭流
+                stream.stop_stream()
+                stream.close()
 
-        # 终止pyaudio
-        p.terminate()
+                # 终止pyaudio
+                p.terminate()
+    return output_path
 
 # 处理流式音频请求
 def handle_stream_request(text, character_name):
+    output_dir = "AUDIO_FILES/InputText"
+    os.makedirs(output_dir, exist_ok=True)
+    # 根据请求生成一个音频文件名
+    output_file_name = f"{character_name}_audio_stream.wav"
+    output_path = os.path.join(output_dir, output_file_name)
+
     response = text_to_speech_stream(text, character_name, stream="True")
-    play_audio_stream(response)
+    audio_path = play_audio_stream(response, output_path)
+
+    # 返回音频文件的路径，以便Gradio界面可以提供下载链接
+    return audio_path
 
 # 停止流式播放
 def stop_stream():
     # 这里需要实现一个停止播放的机制，例如通过设置一个全局变量来控制播放循环。由于直接停止线程可能会导致问题，建议使用更安全的停止机制。
-    pass
+    global is_playing
+    is_playing = False
 
 
 

@@ -102,10 +102,11 @@ def text_to_speech_stream(text, character_name="默认角色", stream=True):
     return response
 
 # 流式播放音频
-is_playing = True
+# 全局变量
+global stream
+stream = None
 def play_audio_stream(response,output_path):
-    global  is_playing
-    is_playing = True
+    global  stream
     # 初始化pyaudio
     p = pyaudio.PyAudio()
 
@@ -118,18 +119,16 @@ def play_audio_stream(response,output_path):
     with open(output_path, "wb") as audio_file:
             try:
                 for data in response.iter_content(chunk_size=1024):
-                    if not is_playing:
-                        break
-                    stream.write(data)
-                    audio_file.write(data)
+                    audio_file.write(data) # 将音频数据写入文件
+                    if (stream is not None) and (not stream.is_stopped()):
+                        stream.write(data)
+
             finally:
                 # 停止和关闭流
-                stream.stop_stream()
-                stream.close()
+                if stream is not None:
+                    stream.stop_stream()
+                return gr.Audio(output_path, type="filepath", streaming=True)
 
-                # 终止pyaudio
-                p.terminate()
-    return output_path
 
 # 处理流式音频请求
 def handle_stream_request(text, character_name):
@@ -147,9 +146,10 @@ def handle_stream_request(text, character_name):
 
 # 停止流式播放
 def stop_stream():
-    # 这里需要实现一个停止播放的机制，例如通过设置一个全局变量来控制播放循环。由于直接停止线程可能会导致问题，建议使用更安全的停止机制。
-    global is_playing
-    is_playing = False
+    global stream
+    if stream is not None:
+        stream.stop_stream()
+        stream = None  # 重置流变量，允许后续播放
 
 
 
